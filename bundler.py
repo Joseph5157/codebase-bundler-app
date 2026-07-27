@@ -123,6 +123,64 @@ def generate_ascii_tree(root_dir, ignore_set, gitignore_spec):
     _build_tree(root_dir)
     return "\n".join(tree_lines)
 
+EXTENSION_TO_LANGUAGE = {
+    ".py": "python",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".html": "html",
+    ".htm": "html",
+    ".css": "css",
+    ".scss": "scss",
+    ".sass": "scss",
+    ".less": "less",
+    ".json": "json",
+    ".md": "markdown",
+    ".markdown": "markdown",
+    ".yml": "yaml",
+    ".yaml": "yaml",
+    ".sql": "sql",
+    ".sh": "bash",
+    ".bash": "bash",
+    ".zsh": "bash",
+    ".bat": "batch",
+    ".ps1": "powershell",
+    ".dockerfile": "dockerfile",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".cc": "cpp",
+    ".h": "c",
+    ".hpp": "cpp",
+    ".java": "java",
+    ".kt": "kotlin",
+    ".go": "go",
+    ".rs": "rust",
+    ".rb": "ruby",
+    ".php": "php",
+    ".swift": "swift",
+    ".r": "r",
+    ".vue": "vue",
+    ".svelte": "svelte",
+    ".xml": "xml",
+    ".ini": "ini",
+    ".toml": "toml",
+    ".env": "dotenv",
+    ".gitignore": "gitignore",
+    ".txt": "text",
+}
+
+def detect_language(filepath: str) -> str:
+    filename = os.path.basename(filepath).lower()
+    if filename in {"dockerfile", "containerfile"}:
+        return "dockerfile"
+    if filename.startswith(".env"):
+        return "dotenv"
+    if filename == "procfile":
+        return "procfile"
+    ext = os.path.splitext(filename)[1]
+    return EXTENSION_TO_LANGUAGE.get(ext, "text")
+
 def process_directory(root_dir, custom_ignores=None):
     ignore_set = set(IGNORE_DIRS)
     if custom_ignores:
@@ -171,40 +229,68 @@ def process_directory(root_dir, custom_ignores=None):
                 lines = clean_content.count("\n") + (1 if clean_content else 0)
                 total_lines += lines
                 file_count += 1
+                lang = detect_language(rel_path)
 
-                file_entries.append((rel_path, clean_content))
+                file_entries.append({
+                    "path": rel_path,
+                    "content": clean_content,
+                    "lines": lines,
+                    "language": lang
+                })
             except Exception as e:
                 print(f"Warning: Could not read {rel_path}: {e}")
 
-    # 3. Format Output in XML (DEFAULT)
+    excluded_list = sorted(list(ignore_set)) + ["binaries"]
+    excluded_str = ", ".join(excluded_list)
+
+    # 3. Format Output in Gold-Standard XML (DEFAULT)
     xml_parts = [
-        "<repository>",
-        "  <structure>",
+        "<project_context>",
+        "  <metadata>",
+        f"    <total_files>{file_count}</total_files>",
+        f"    <total_lines>{total_lines}</total_lines>",
+        f"    <excluded>{excluded_str}</excluded>",
+        "  </metadata>",
+        "  <directory_tree>",
         ascii_tree,
-        "  </structure>",
+        "  </directory_tree>",
         "  <files>"
     ]
-    for path, content in file_entries:
+    for entry in file_entries:
+        path = entry["path"]
+        lang = entry["language"]
+        lines = entry["lines"]
+        content = entry["content"]
         safe_content = content.replace("]]>", "]]&gt;")
-        xml_parts.append(f'    <file path="{path}">\n      <![CDATA[\n{safe_content}\n      ]]>\n    </file>')
+        xml_parts.append(f'    <file path="{path}" language="{lang}" lines="{lines}">\n<![CDATA[\n{safe_content}\n]]>\n    </file>')
     xml_parts.append("  </files>")
-    xml_parts.append("</repository>")
+    xml_parts.append("</project_context>")
 
     xml_text = "\n".join(xml_parts)
 
-    # 4. Format Output in Markdown
+    # 4. Format Output in Structured Markdown
     md_parts = [
-        "================================================================",
-        "PROJECT STRUCTURE",
-        "================================================================",
+        "<project_context>",
+        "  <metadata>",
+        f"    <total_files>{file_count}</total_files>",
+        f"    <total_lines>{total_lines}</total_lines>",
+        f"    <excluded>{excluded_str}</excluded>",
+        "  </metadata>",
+        "  <directory_tree>",
         ascii_tree,
+        "  </directory_tree>",
         "",
         "================================================================",
         "FILE CONTENTS",
         "================================================================"
     ]
-    for path, content in file_entries:
-        md_parts.append(f"\n--- FILE: {path} ---\n{content}")
+    for entry in file_entries:
+        path = entry["path"]
+        lang = entry["language"]
+        lines = entry["lines"]
+        content = entry["content"]
+        md_parts.append(f"\n### `{path}` ({lang} | {lines} lines)\n```{lang}\n{content}\n```")
+    md_parts.append("</project_context>")
 
     markdown_text = "\n".join(md_parts)
 

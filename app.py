@@ -85,6 +85,7 @@ def bundle_file():
             token_count=result['token_count'],
             redacted_count=result['redacted_count'],
             xml_text=result['xml_text'],
+            markdown_text=result['markdown_text'],
             filename=uploaded_file.filename
         )
         return jsonify({
@@ -96,7 +97,8 @@ def bundle_file():
             'token_count': result['token_count'],
             'redacted_count': result['redacted_count'],
             'text': result['text'],
-            'xml_text': result['xml_text']
+            'xml_text': result['xml_text'],
+            'markdown_text': result['markdown_text']
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -125,6 +127,7 @@ def bundle_github():
             token_count=result['token_count'],
             redacted_count=result['redacted_count'],
             xml_text=result['xml_text'],
+            markdown_text=result['markdown_text'],
             filename=repo_filename
         )
 
@@ -140,7 +143,8 @@ def bundle_github():
             'token_count': result['token_count'],
             'redacted_count': result['redacted_count'],
             'text': result['text'],
-            'xml_text': result['xml_text']
+            'xml_text': result['xml_text'],
+            'markdown_text': result['markdown_text']
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
