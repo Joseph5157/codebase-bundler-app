@@ -3,6 +3,7 @@ import tempfile
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify, send_file, Response
 from bundler import process_zip_file
+from github_downloader import download_github_repo_zip
 from store import save_bundle, get_bundle
 
 # Load environment variables from .env file if present
@@ -47,10 +48,11 @@ def download_bundle_file(bundle_id):
     bundle = get_bundle(bundle_id)
     if not bundle:
         return "Context bundle expired or not found.", 404
+    ext = ".xml" if bundle.get('active_format') == 'xml' else ".txt"
     return Response(
         bundle['text'],
         mimetype="text/plain",
-        headers={"Content-disposition": "attachment; filename=project_context.txt"}
+        headers={"Content-disposition": f"attachment; filename=project_context{ext}"}
     )
 
 @app.route('/api/bundle', methods=['POST'])
@@ -80,6 +82,9 @@ def bundle_file():
             file_count=result['file_count'],
             total_lines=result['total_lines'],
             total_bytes=result['total_bytes'],
+            token_count=result['token_count'],
+            redacted_count=result['redacted_count'],
+            xml_text=result['xml_text'],
             filename=uploaded_file.filename
         )
         return jsonify({
@@ -88,13 +93,57 @@ def bundle_file():
             'file_count': result['file_count'],
             'total_lines': result['total_lines'],
             'total_bytes': result['total_bytes'],
-            'text': result['text']
+            'token_count': result['token_count'],
+            'redacted_count': result['redacted_count'],
+            'text': result['text'],
+            'xml_text': result['xml_text']
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+@app.route('/api/bundle-github', methods=['POST'])
+def bundle_github():
+    data = request.get_json() or {}
+    github_url = data.get('github_url', '').strip()
+    custom_ignores = data.get('custom_ignores', [])
+
+    if not github_url:
+        return jsonify({'error': 'GitHub URL is required'}), 400
+
+    try:
+        tmp_zip, repo_filename = download_github_repo_zip(github_url)
+        result = process_zip_file(tmp_zip, custom_ignores=custom_ignores)
+        
+        bundle_id = save_bundle(
+            text=result['text'],
+            file_count=result['file_count'],
+            total_lines=result['total_lines'],
+            total_bytes=result['total_bytes'],
+            token_count=result['token_count'],
+            redacted_count=result['redacted_count'],
+            xml_text=result['xml_text'],
+            filename=repo_filename
+        )
+
+        if os.path.exists(tmp_zip):
+            os.remove(tmp_zip)
+
+        return jsonify({
+            'success': True,
+            'bundle_id': bundle_id,
+            'file_count': result['file_count'],
+            'total_lines': result['total_lines'],
+            'total_bytes': result['total_bytes'],
+            'token_count': result['token_count'],
+            'redacted_count': result['redacted_count'],
+            'text': result['text'],
+            'xml_text': result['xml_text']
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/download', methods=['POST'])
 def download_result():
