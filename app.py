@@ -2,7 +2,8 @@ import os
 import tempfile
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify, send_file, Response
-from bundler import process_zip_file, process_directory
+from bundler import process_zip_file
+from store import save_bundle, get_bundle
 
 # Load environment variables from .env file if present
 load_dotenv()
@@ -27,6 +28,31 @@ if bot_token:
 def index():
     return render_template('index.html')
 
+@app.route('/copy/<bundle_id>')
+def copy_bundle_view(bundle_id):
+    bundle = get_bundle(bundle_id)
+    if not bundle:
+        return render_template('copy.html', error="Context bundle expired or not found. Please generate a new bundle."), 404
+    return render_template('copy.html', bundle=bundle, bundle_id=bundle_id)
+
+@app.route('/raw/<bundle_id>')
+def raw_bundle_view(bundle_id):
+    bundle = get_bundle(bundle_id)
+    if not bundle:
+        return "Context bundle expired or not found.", 404
+    return Response(bundle['text'], mimetype="text/plain")
+
+@app.route('/download/<bundle_id>')
+def download_bundle_file(bundle_id):
+    bundle = get_bundle(bundle_id)
+    if not bundle:
+        return "Context bundle expired or not found.", 404
+    return Response(
+        bundle['text'],
+        mimetype="text/plain",
+        headers={"Content-disposition": "attachment; filename=project_context.txt"}
+    )
+
 @app.route('/api/bundle', methods=['POST'])
 def bundle_file():
     if 'file' not in request.files:
@@ -49,8 +75,16 @@ def bundle_file():
 
     try:
         result = process_zip_file(tmp_path, custom_ignores=custom_ignores)
+        bundle_id = save_bundle(
+            text=result['text'],
+            file_count=result['file_count'],
+            total_lines=result['total_lines'],
+            total_bytes=result['total_bytes'],
+            filename=uploaded_file.filename
+        )
         return jsonify({
             'success': True,
+            'bundle_id': bundle_id,
             'file_count': result['file_count'],
             'total_lines': result['total_lines'],
             'total_bytes': result['total_bytes'],
@@ -75,4 +109,3 @@ def download_result():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5050))
     app.run(host='0.0.0.0', port=port, debug=True)
-

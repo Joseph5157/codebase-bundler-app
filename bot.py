@@ -4,23 +4,13 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 from bundler import process_zip_file
+from store import save_bundle, get_bundle
 
 load_dotenv()
 
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 WEB_APP_DOMAIN = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'codebase-bundler-app-production.up.railway.app')
 WEB_APP_URL = os.environ.get('WEB_APP_URL', f"https://{WEB_APP_DOMAIN}")
-
-# In-memory storage for bundled texts (key: str(message_id))
-CACHE_MAX_SIZE = 100
-RESULT_CACHE = {}
-
-def cache_result(key: str, data: dict):
-    if len(RESULT_CACHE) >= CACHE_MAX_SIZE:
-        keys_to_remove = list(RESULT_CACHE.keys())[:20]
-        for k in keys_to_remove:
-            RESULT_CACHE.pop(k, None)
-    RESULT_CACHE[key] = data
 
 def format_bytes(size):
     if size < 1024:
@@ -46,11 +36,11 @@ def create_bot():
             "⚡ **Features:**\n"
             "- Ignores `node_modules`, `.git`, `venv`, `__pycache__`, & binary files\n"
             "- Formats clean file headers for ChatGPT, Claude, & Gemini\n"
-            "- 📥 **Download** & 📋 **Copy** buttons included right in chat!\n\n"
+            "- 📋 **1-Click Copy** & 📥 **Download** buttons included right in chat!\n\n"
             "📤 **Send any .zip file to get started!**"
         )
         markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("🌐 Web App", url=WEB_APP_URL))
+        markup.add(InlineKeyboardButton("🌐 Open Web App", url=WEB_APP_URL))
         bot.reply_to(message, welcome_text, parse_mode="Markdown", reply_markup=markup)
 
     @bot.message_handler(content_types=['document'])
@@ -79,30 +69,33 @@ def create_bot():
             total_lines = result['total_lines']
             total_bytes = result['total_bytes']
 
+            # Save bundle into store
+            bundle_id = save_bundle(
+                text=text_content,
+                file_count=file_count,
+                total_lines=total_lines,
+                total_bytes=total_bytes,
+                filename=doc.file_name
+            )
+
+            copy_url = f"{WEB_APP_URL}/copy/{bundle_id}"
+
             summary = (
                 "✅ **Project Context Bundled Successfully!**\n\n"
                 f"📁 **Files Bundled:** `{file_count:,}`\n"
                 f"📝 **Total Lines:** `{total_lines:,}`\n"
                 f"📦 **Context Size:** `{format_bytes(total_bytes)}`\n\n"
-                "👇 **Tap below to Download or Copy your context:**"
+                "👇 **Tap below to Copy or Download your full context:**"
             )
 
-            # Store result in cache
-            cache_id = str(message.message_id)
-            cache_result(cache_id, {
-                'text': text_content,
-                'filename': doc.file_name,
-                'summary': summary
-            })
-
-            # Create Inline Keyboard with Download, Copy, & Web App buttons
+            # Create Inline Keyboard with 1-Click Copy Web Page, Download & Telegram Preview
             markup = InlineKeyboardMarkup(row_width=2)
-            btn_download = InlineKeyboardButton("📥 Download .txt", callback_data=f"dl_{cache_id}")
-            btn_copy = InlineKeyboardButton("📋 Copy Context", callback_data=f"copy_{cache_id}")
-            btn_web = InlineKeyboardButton("🌐 Open Web App", url=WEB_APP_URL)
+            btn_copy_full = InlineKeyboardButton("📋 Copy Full Context", url=copy_url)
+            btn_download = InlineKeyboardButton("📥 Download .txt", callback_data=f"dl_{bundle_id}")
+            btn_preview = InlineKeyboardButton("💬 Chat Preview", callback_data=f"preview_{bundle_id}")
             
-            markup.add(btn_download, btn_copy)
-            markup.add(btn_web)
+            markup.add(btn_copy_full)
+            markup.add(btn_download, btn_preview)
 
             # Send document file with Inline Keyboard buttons
             output_tmp = os.path.join(tempfile.gettempdir(), "project_context.txt")
@@ -134,44 +127,43 @@ def create_bot():
 
     @bot.callback_query_handler(func=lambda call: True)
     def handle_callbacks(call):
-        if call.data.startswith("copy_"):
-            cache_id = call.data.replace("copy_", "")
-            cached = RESULT_CACHE.get(cache_id)
+        if call.data.startswith("preview_"):
+            bundle_id = call.data.replace("preview_", "")
+            bundle = get_bundle(bundle_id)
 
-            if not cached:
+            if not bundle:
                 bot.answer_callback_query(call.id, "⚠️ Context expired or not found. Please re-upload your zip file.", show_alert=True)
                 return
 
-            text_content = cached['text']
-            bot.answer_callback_query(call.id, "📋 Generating copyable text block...", show_alert=False)
+            text_content = bundle['text']
+            bot.answer_callback_query(call.id, "📋 Preparing chat preview...", show_alert=False)
 
-            # Telegram message length limit is 4096.
             if len(text_content) <= 3800:
                 copy_msg = (
-                    "📋 **Tap the code block below to copy:**\n\n"
+                    "💬 **Tap the code block below to copy:**\n\n"
                     f"```text\n{text_content}\n```"
                 )
             else:
                 snippet = text_content[:3500]
                 copy_msg = (
-                    "📋 **Tap code block below to copy (First 3.5K chars preview):**\n\n"
+                    "💬 **Tap code block below to copy preview:**\n\n"
                     f"```text\n{snippet}\n```\n\n"
-                    "ℹ️ *Note: Full context is in the downloaded `project_context.txt` file attached above!*"
+                    f"🔗 *To copy the ENTIRE context without truncation, tap the [📋 Copy Full Context] button!*"
                 )
 
             bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
 
         elif call.data.startswith("dl_"):
-            cache_id = call.data.replace("dl_", "")
-            cached = RESULT_CACHE.get(cache_id)
+            bundle_id = call.data.replace("dl_", "")
+            bundle = get_bundle(bundle_id)
 
-            if not cached:
+            if not bundle:
                 bot.answer_callback_query(call.id, "⚠️ Context expired. Please re-upload your zip file.", show_alert=True)
                 return
 
             bot.answer_callback_query(call.id, "📥 Preparing download file...", show_alert=False)
 
-            text_content = cached['text']
+            text_content = bundle['text']
             output_tmp = os.path.join(tempfile.gettempdir(), "project_context.txt")
             with open(output_tmp, "w", encoding="utf-8") as f:
                 f.write(text_content)

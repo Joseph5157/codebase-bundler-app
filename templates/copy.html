@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Copy Project Context | AI Context Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .copy-hero {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .copy-hero h1 {
+            font-family: var(--font-heading);
+            font-size: 2.2rem;
+            font-weight: 800;
+            margin-top: 10px;
+        }
+        .main-copy-btn {
+            width: 100%;
+            padding: 16px 24px;
+            font-size: 1.15rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            border-radius: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            transition: all 0.25s ease;
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35);
+        }
+        .main-copy-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 32px rgba(99, 102, 241, 0.5);
+        }
+        .action-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin: 24px 0;
+        }
+        .sub-actions {
+            display: flex;
+            gap: 12px;
+        }
+        .sub-actions .btn {
+            flex: 1;
+        }
+        .error-card {
+            text-align: center;
+            padding: 40px;
+            color: #f87171;
+        }
+    </style>
+</head>
+<body>
+    <div class="background-decor">
+        <div class="glow glow-1"></div>
+        <div class="glow glow-2"></div>
+    </div>
+
+    <div class="container">
+        {% if error %}
+        <header class="app-header">
+            <div class="badge">Error</div>
+            <h1>Bundle Not Found</h1>
+        </header>
+        <main class="app-main">
+            <section class="card error-card">
+                <p>{{ error }}</p>
+                <br>
+                <a href="/" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Go to Home Page</a>
+            </section>
+        </main>
+        {% else %}
+        <header class="copy-hero">
+            <div class="badge">Telegram & Web Context Share</div>
+            <h1>Project Context Ready!</h1>
+            <p>One-click copy the full untruncated project context for ChatGPT, Claude, & Gemini.</p>
+        </header>
+
+        <main class="app-main">
+            <section class="card">
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-label">Files Bundled</div>
+                        <div class="stat-value">{{ "{:,}".format(bundle.file_count) }}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Total Lines</div>
+                        <div class="stat-value">{{ "{:,}".format(bundle.total_lines) }}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Context Size</div>
+                        <div class="stat-value">
+                            {% if bundle.total_bytes < 1024 %}
+                                {{ bundle.total_bytes }} Bytes
+                            {% elif bundle.total_bytes < 1048576 %}
+                                {{ "%.2f"|format(bundle.total_bytes / 1024) }} KB
+                            {% else %}
+                                {{ "%.2f"|format(bundle.total_bytes / 1048576) }} MB
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-grid">
+                    <button id="bigCopyBtn" class="btn btn-primary main-copy-btn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        <span>📋 COPY ENTIRE CONTEXT</span>
+                    </button>
+
+                    <div class="sub-actions">
+                        <a href="/download/{{ bundle_id }}" class="btn btn-accent" style="text-decoration: none; text-align: center; display: flex; align-items: center; justify-content: center;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            Download .txt
+                        </a>
+                        <a href="/raw/{{ bundle_id }}" target="_blank" class="btn btn-secondary" style="text-decoration: none; text-align: center; display: flex; align-items: center; justify-content: center;">
+                            📄 Raw Text
+                        </a>
+                    </div>
+                </div>
+
+                <div class="preview-container">
+                    <div class="preview-header">
+                        <span>Preview: project_context.txt</span>
+                    </div>
+                    <pre class="preview-code" id="codeText">{{ bundle.text }}</pre>
+                </div>
+            </section>
+        </main>
+        {% endif %}
+    </div>
+
+    <div class="toast" id="toast">Copied to clipboard!</div>
+
+    <script>
+        const bigCopyBtn = document.getElementById('bigCopyBtn');
+        const codeText = document.getElementById('codeText');
+        const toast = document.getElementById('toast');
+
+        if (bigCopyBtn && codeText) {
+            bigCopyBtn.addEventListener('click', async () => {
+                const text = codeText.textContent;
+                try {
+                    await navigator.clipboard.writeText(text);
+                    showToast("Copied entire context to clipboard! ✅");
+                    
+                    const span = bigCopyBtn.querySelector('span');
+                    const origText = span.textContent;
+                    span.textContent = "✅ COPIED TO CLIPBOARD!";
+                    bigCopyBtn.style.background = "var(--accent)";
+                    
+                    setTimeout(() => {
+                        span.textContent = origText;
+                        bigCopyBtn.style.background = "";
+                    }, 3000);
+                } catch (err) {
+                    // Fallback select & copy
+                    const range = document.createRange();
+                    range.selectNode(codeText);
+                    window.getSelection().removeAllRanges();
+                    window.getSelection().addRange(range);
+                    document.execCommand('copy');
+                    showToast("Copied to clipboard! ✅");
+                }
+            });
+        }
+
+        function showToast(msg) {
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
