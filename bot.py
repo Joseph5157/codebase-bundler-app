@@ -318,7 +318,7 @@ def run_bot():
     if bot:
         print("Starting Telegram Bot polling loop...")
         try:
-            bot.infinity_polling(timeout=10, long_polling_timeout=5)
+            bot.infinity_polling(skip_pending=True, timeout=10, long_polling_timeout=5)
         except Exception as e:
             print(f"Telegram bot polling stopped due to error: {e}")
 
