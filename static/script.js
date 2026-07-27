@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     function handleFileSelect(file) {
-        if (!file.name.toLowerCase().endswith('.zip')) {
+        if (!file.name.toLowerCase().endsWith('.zip')) {
             alert('Please select a valid .zip file');
             return;
         }

@@ -139,14 +139,25 @@ def create_bot():
             f.write(result['xml_text'])
 
         with open(output_tmp, "rb") as doc_file:
-            sent_doc = bot.send_document(
-                message.chat.id,
-                doc_file,
-                caption=summary,
-                parse_mode="Markdown",
-                reply_to_message_id=message.message_id,
-                reply_markup=markup
-            )
+            try:
+                sent_doc = bot.send_document(
+                    message.chat.id,
+                    doc_file,
+                    caption=summary,
+                    parse_mode="Markdown",
+                    reply_to_message_id=message.message_id,
+                    reply_markup=markup
+                )
+            except Exception:
+                doc_file.seek(0)
+                sent_doc = bot.send_document(
+                    message.chat.id,
+                    doc_file,
+                    caption=summary,
+                    parse_mode=None,
+                    reply_to_message_id=message.message_id,
+                    reply_markup=markup
+                )
             add_sent_message(bundle_id, sent_doc.message_id)
 
         if os.path.exists(output_tmp):
@@ -210,15 +221,19 @@ def create_bot():
 
             text_content = bundle['text']
             fmt_label = bundle.get('active_format', 'xml').upper()
-            bot.answer_callback_query(call.id, f"📋 Sending copyable {fmt_label} context...", show_alert=False)
+            bot.answer_callback_query(call.id, f"📋 Preparing copyable {fmt_label} context...", show_alert=False)
 
             CHUNK_SIZE = 3800
+            MAX_COPY_PARTS = 3
             total_len = len(text_content)
 
             if total_len <= CHUNK_SIZE:
                 safe_text = text_content.replace("```", "'''")
                 copy_msg = f"📋 **Tap code block below to copy ({fmt_label}):**\n\n```text\n{safe_text}\n```"
-                sent_msg = bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
+                try:
+                    sent_msg = bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
+                except Exception:
+                    sent_msg = bot.send_message(call.message.chat.id, f"📋 Tap code block below to copy ({fmt_label}):\n\n{text_content}", reply_to_message_id=call.message.message_id)
                 add_sent_message(bundle_id, sent_msg.message_id)
             else:
                 chunks = []
@@ -239,10 +254,30 @@ def create_bot():
                     chunks.append("\n".join(current_chunk))
 
                 total_parts = len(chunks)
-                for idx, chunk in enumerate(chunks, 1):
+                parts_to_send = min(total_parts, MAX_COPY_PARTS)
+
+                for idx in range(parts_to_send):
+                    chunk = chunks[idx]
                     safe_chunk = chunk.replace("```", "'''")
-                    copy_msg = f"📋 **Part {idx}/{total_parts} ({fmt_label} - Tap code block to copy):**\n\n```text\n{safe_chunk}\n```"
-                    sent_msg = bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
+                    copy_msg = f"📋 **Part {idx+1}/{total_parts} ({fmt_label} - Tap code block to copy):**\n\n```text\n{safe_chunk}\n```"
+                    try:
+                        sent_msg = bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
+                    except Exception:
+                        sent_msg = bot.send_message(call.message.chat.id, f"📋 Part {idx+1}/{total_parts} ({fmt_label}):\n\n{chunk}", reply_to_message_id=call.message.message_id)
+                    add_sent_message(bundle_id, sent_msg.message_id)
+
+                if total_parts > MAX_COPY_PARTS:
+                    server_url = os.environ.get('SERVER_URL', '').rstrip('/')
+                    copy_web_text = f"\n\n🔗 **Web 1-Click Copy:** {server_url}/copy/{bundle_id}" if server_url else ""
+                    limit_msg = (
+                        f"⚠️ **Context is large ({total_parts} parts / {format_bytes(len(text_content))}) for Telegram messages.**\n"
+                        f"Sent first {MAX_COPY_PARTS} parts above to prevent continuous message flooding.{copy_web_text}\n\n"
+                        f"📥 **Please use the Download button or open the `.xml` / `.txt` file above for full context!**"
+                    )
+                    try:
+                        sent_msg = bot.send_message(call.message.chat.id, limit_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
+                    except Exception:
+                        sent_msg = bot.send_message(call.message.chat.id, limit_msg.replace("**", "").replace("`", ""), reply_to_message_id=call.message.message_id)
                     add_sent_message(bundle_id, sent_msg.message_id)
 
         elif call.data.startswith("dl_"):
@@ -282,7 +317,10 @@ def run_bot():
     bot = create_bot()
     if bot:
         print("Starting Telegram Bot polling loop...")
-        bot.infinity_polling()
+        try:
+            bot.infinity_polling(timeout=10, long_polling_timeout=5)
+        except Exception as e:
+            print(f"Telegram bot polling stopped due to error: {e}")
 
 if __name__ == '__main__':
     run_bot()
