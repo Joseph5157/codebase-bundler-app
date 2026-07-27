@@ -7,3 +7,5 @@ venv/
 *.log
 project_context.txt
 .DS_Store
+.env
+

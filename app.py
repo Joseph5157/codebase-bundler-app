@@ -1,9 +1,14 @@
 import os
 import tempfile
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, jsonify, send_file, Response
 from bundler import process_zip_file, process_directory
 
+# Load environment variables from .env file if present
+load_dotenv()
+
 app = Flask(__name__)
+
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB max upload limit
 
 # Automatically start Telegram Bot if token is provided

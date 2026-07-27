@@ -1,9 +1,13 @@
 import os
 import tempfile
 import telebot
+from dotenv import load_dotenv
 from bundler import process_zip_file
 
+load_dotenv()
+
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+
 
 def format_bytes(size):
     if size < 1024:
