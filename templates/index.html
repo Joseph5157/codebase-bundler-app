@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Context Bundler for AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="background-decor">
+        <div class="glow glow-1"></div>
+        <div class="glow glow-2"></div>
+    </div>
+
+    <div class="container">
+        <header class="app-header">
+            <div class="badge">AI Context Generator</div>
+            <h1>GitHub Project Bundler</h1>
+            <p>Convert any GitHub project <code>.zip</code> into a clean, single <code>project_context.txt</code> ready for AI models.</p>
+        </header>
+
+        <main class="app-main">
+            <!-- Upload Card -->
+            <section class="card upload-card">
+                <div class="drop-zone" id="dropZone">
+                    <div class="drop-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                    </div>
+                    <div class="drop-text">
+                        <span class="highlight">Click to browse</span> or drag & drop GitHub <code>.zip</code> file
+                    </div>
+                    <div class="drop-hint">Ignores node_modules, .git, venv & binaries automatically</div>
+                    <input type="file" id="fileInput" accept=".zip" class="file-input">
+                </div>
+
+                <div class="options-group">
+                    <label for="customIgnores">Additional Ignore Patterns (optional, comma-separated):</label>
+                    <input type="text" id="customIgnores" placeholder="e.g. docs, tests, temp, *.log" class="input-field">
+                </div>
+
+                <div class="action-row">
+                    <button id="processBtn" class="btn btn-primary" disabled>
+                        <span class="btn-text">Generate Context</span>
+                        <div class="spinner" id="spinner"></div>
+                    </button>
+                </div>
+            </section>
+
+            <!-- Results Card -->
+            <section class="card result-card" id="resultCard" style="display: none;">
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-label">Files Bundled</div>
+                        <div class="stat-value" id="statFiles">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Total Lines</div>
+                        <div class="stat-value" id="statLines">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Context Size</div>
+                        <div class="stat-value" id="statSize">0 KB</div>
+                    </div>
+                </div>
+
+                <div class="result-actions">
+                    <button id="copyBtn" class="btn btn-secondary">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                        Copy to Clipboard
+                    </button>
+                    <button id="downloadBtn" class="btn btn-accent">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Download project_context.txt
+                    </button>
+                </div>
+
+                <div class="preview-container">
+                    <div class="preview-header">
+                        <span>Preview: project_context.txt</span>
+                        <span id="previewInfo"></span>
+                    </div>
+                    <pre class="preview-code" id="previewCode"></pre>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="toast" id="toast">Copied to clipboard!</div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

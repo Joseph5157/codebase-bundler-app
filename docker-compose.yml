@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  codebase-bundler:
+    build: .
+    container_name: codebase-bundler
+    ports:
+      - "5050:5050"
+    restart: unless-stopped
+    environment:
+      - PORT=5050
