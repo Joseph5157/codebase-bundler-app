@@ -8,17 +8,20 @@ from bundler import process_zip_file, process_directory
 load_dotenv()
 
 app = Flask(__name__)
-
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB max upload limit
 
 # Automatically start Telegram Bot if token is provided
 bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
 if bot_token:
-    import threading
-    from bot import run_bot
-    print("Telegram Bot Token detected! Starting bot in background thread...")
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
+    # Ensure bot only starts once per Python process and avoids duplicate threads in Flask debug reloader
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or os.environ.get('WERKZEUG_RUN_MAIN') is None:
+        import threading
+        from bot import run_bot
+        if not getattr(app, '_bot_started', False):
+            app._bot_started = True
+            print("Telegram Bot Token detected! Starting bot in background thread...")
+            bot_thread = threading.Thread(target=run_bot, daemon=True)
+            bot_thread.start()
 
 @app.route('/')
 def index():
@@ -70,13 +73,6 @@ def download_result():
     return response
 
 if __name__ == '__main__':
-    bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
-    if bot_token:
-        import threading
-        from bot import run_bot
-        print("Telegram Bot Token detected! Starting bot in background thread...")
-        bot_thread = threading.Thread(target=run_bot, daemon=True)
-        bot_thread.start()
-
     port = int(os.environ.get('PORT', 5050))
     app.run(host='0.0.0.0', port=port, debug=True)
+
