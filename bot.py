@@ -20,7 +20,7 @@ def format_bytes(size):
     else:
         return f"{size / (1024 * 1024):.2f} MB"
 
-def build_summary_text(result, active_format="markdown"):
+def build_summary_text(result, active_format="xml"):
     fmt_title = "XML" if active_format == "xml" else "Markdown"
     return (
         f"✅ **Project Context Bundled Successfully!** ({fmt_title})\n\n"
@@ -32,10 +32,11 @@ def build_summary_text(result, active_format="markdown"):
         "👇 **Tap below to Copy or Download directly in chat:**"
     )
 
-def build_keyboard(bundle_id, active_format="markdown"):
+def build_keyboard(bundle_id, active_format="xml"):
     markup = InlineKeyboardMarkup(row_width=2)
+    ext = ".xml" if active_format == "xml" else ".txt"
     btn_copy = InlineKeyboardButton("📋 Copy Context", callback_data=f"copy_{bundle_id}")
-    btn_download = InlineKeyboardButton("📥 Download .txt", callback_data=f"dl_{bundle_id}")
+    btn_download = InlineKeyboardButton(f"📥 Download {ext}", callback_data=f"dl_{bundle_id}")
     
     toggle_label = "🏷️ Format: XML (Switch to MD)" if active_format == "xml" else "🏷️ Format: MD (Switch to XML)"
     btn_toggle = InlineKeyboardButton(toggle_label, callback_data=f"toggle_{bundle_id}")
@@ -55,14 +56,14 @@ def create_bot():
     def send_welcome(message):
         welcome_text = (
             "👋 **Welcome to the Project Context Bundler Bot!**\n\n"
-            "Convert any GitHub repository into a clean, single `project_context.txt` file ready for AI models!\n\n"
+            "Convert any GitHub repository into a clean, single `project_context.xml` file ready for AI models!\n\n"
             "⚡ **How to use:**\n"
             "1️⃣ **Upload a `.zip` archive file**, OR\n"
             "2️⃣ **Paste a GitHub repo link** (e.g., `https://github.com/owner/repo`)\n\n"
             "🌟 **Features:**\n"
-            "- 🌲 ASCII Directory Tree & Dynamic `.gitignore` parsing\n"
+            "- 🌲 ASCII Directory Tree at the top for spatial LLM awareness\n"
+            "- 🏷️ **Default XML Output Format** (`<file path=\"...\">`)\n"
             "- 🧮 `tiktoken` Token Count & 🔒 Automatic Secret Redaction\n"
-            "- 🏷️ 1-Click Toggle between **Markdown** and **XML** formats!\n"
             "- 📋 **1-Tap Copy** & 📥 **Download** directly inside Telegram!"
         )
         bot.reply_to(message, welcome_text, parse_mode="Markdown")
@@ -116,24 +117,25 @@ def create_bot():
         result = process_zip_file(zip_path)
 
         bundle_id = save_bundle(
-            text=result['text'],
+            text=result['xml_text'],
             file_count=result['file_count'],
             total_lines=result['total_lines'],
             total_bytes=result['total_bytes'],
             token_count=result['token_count'],
             redacted_count=result['redacted_count'],
             xml_text=result['xml_text'],
+            markdown_text=result['markdown_text'],
             filename=original_filename
         )
 
-        summary = build_summary_text(result, active_format="markdown")
-        markup = build_keyboard(bundle_id, active_format="markdown")
+        summary = build_summary_text(result, active_format="xml")
+        markup = build_keyboard(bundle_id, active_format="xml")
 
-        output_filename = f"project_context_{message.chat.id}_{message.message_id}.txt"
+        output_filename = f"project_context_{message.chat.id}_{message.message_id}.xml"
         output_tmp = os.path.join(tempfile.gettempdir(), output_filename)
         
         with open(output_tmp, "w", encoding="utf-8") as f:
-            f.write(result['text'])
+            f.write(result['xml_text'])
 
         with open(output_tmp, "rb") as doc_file:
             bot.send_document(
@@ -186,7 +188,7 @@ def create_bot():
                 return
 
             text_content = bundle['text']
-            fmt_label = bundle.get('active_format', 'markdown').upper()
+            fmt_label = bundle.get('active_format', 'xml').upper()
             bot.answer_callback_query(call.id, f"📋 Sending copyable {fmt_label} context...", show_alert=False)
 
             CHUNK_SIZE = 3800

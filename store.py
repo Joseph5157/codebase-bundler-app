@@ -12,6 +12,7 @@ def save_bundle(
     token_count: int = 0,
     redacted_count: int = 0,
     xml_text: str = "",
+    markdown_text: str = "",
     filename: str = "project.zip"
 ) -> str:
     now = time.time()
@@ -24,11 +25,15 @@ def save_bundle(
                 BUNDLES.pop(k, None)
 
     bundle_id = uuid.uuid4().hex[:12]
+    # Default format is XML
+    xml_content = xml_text or text
+    md_content = markdown_text or text
+
     BUNDLES[bundle_id] = {
-        'markdown_text': text,
-        'xml_text': xml_text or text,
-        'text': text,
-        'active_format': 'markdown',
+        'xml_text': xml_content,
+        'markdown_text': md_content,
+        'text': xml_content,  # Default to XML
+        'active_format': 'xml',
         'file_count': file_count,
         'total_lines': total_lines,
         'total_bytes': total_bytes,

@@ -28,11 +28,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const downloadBtn = document.getElementById('downloadBtn');
     const toast = document.getElementById('toast');
     
-    let activeMode = 'zip'; // 'zip' or 'github'
+    let activeMode = 'zip';
     let currentFile = null;
     let mdResultText = '';
     let xmlResultText = '';
-    let currentFormat = 'markdown'; // 'markdown' or 'xml'
+    let currentFormat = 'xml'; // Default format is XML
 
     // Tab Switcher
     tabZip.addEventListener('click', () => {
@@ -52,20 +52,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Format Switcher
-    fmtMarkdown.addEventListener('click', () => {
-        currentFormat = 'markdown';
-        fmtMarkdown.classList.add('active');
-        fmtXml.classList.remove('active');
-        previewTitle.textContent = 'Preview: project_context.txt (Markdown)';
-        previewCode.textContent = mdResultText;
-    });
-
     fmtXml.addEventListener('click', () => {
         currentFormat = 'xml';
         fmtXml.classList.add('active');
         fmtMarkdown.classList.remove('active');
         previewTitle.textContent = 'Preview: project_context.xml (XML)';
         previewCode.textContent = xmlResultText;
+    });
+
+    fmtMarkdown.addEventListener('click', () => {
+        currentFormat = 'markdown';
+        fmtMarkdown.classList.add('active');
+        fmtXml.classList.remove('active');
+        previewTitle.textContent = 'Preview: project_context.txt (Markdown)';
+        previewCode.textContent = mdResultText;
     });
 
     // Drag and Drop Events
@@ -148,8 +148,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (data.success) {
-                mdResultText = data.text;
                 xmlResultText = data.xml_text || data.text;
+                mdResultText = data.markdown_text || data.text;
 
                 statFiles.textContent = data.file_count.toLocaleString();
                 statLines.textContent = data.total_lines.toLocaleString();
@@ -157,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 statSize.textContent = formatBytes(data.total_bytes);
                 statRedacted.textContent = data.redacted_count.toLocaleString();
 
-                previewCode.textContent = (currentFormat === 'xml') ? xmlResultText : mdResultText;
+                previewCode.textContent = (currentFormat === 'markdown') ? mdResultText : xmlResultText;
                 previewInfo.textContent = `${data.file_count} files bundled`;
                 resultCard.style.display = 'flex';
                 resultCard.scrollIntoView({ behavior: 'smooth' });
@@ -174,7 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     copyBtn.addEventListener('click', () => {
-        const textToCopy = (currentFormat === 'xml') ? xmlResultText : mdResultText;
+        const textToCopy = (currentFormat === 'markdown') ? mdResultText : xmlResultText;
         if (!textToCopy) return;
         navigator.clipboard.writeText(textToCopy).then(() => {
             showToast(`Copied ${currentFormat.toUpperCase()} project context to clipboard!`);
@@ -184,9 +184,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     downloadBtn.addEventListener('click', () => {
-        const textToDownload = (currentFormat === 'xml') ? xmlResultText : mdResultText;
+        const textToDownload = (currentFormat === 'markdown') ? mdResultText : xmlResultText;
         if (!textToDownload) return;
-        const ext = (currentFormat === 'xml') ? 'xml' : 'txt';
+        const ext = (currentFormat === 'markdown') ? 'txt' : 'xml';
         const blob = new Blob([textToDownload], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

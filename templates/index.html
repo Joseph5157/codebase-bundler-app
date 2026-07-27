@@ -81,7 +81,7 @@
         <header class="app-header">
             <div class="badge">Developer-Grade AI Context Generator</div>
             <h1>GitHub Project Bundler</h1>
-            <p>Convert any GitHub repository or <code>.zip</code> into a clean <code>project_context.txt</code> optimized for ChatGPT, Claude, & Gemini.</p>
+            <p>Convert any GitHub repository or <code>.zip</code> into a clean <code>project_context.xml</code> optimized for Claude, Gemini, & ChatGPT.</p>
         </header>
 
         <main class="app-main">
@@ -156,8 +156,8 @@
                 <div class="format-switcher">
                     <span>Output Format:</span>
                     <div class="format-options">
-                        <button class="fmt-btn active" id="fmtMarkdown">Markdown (ChatGPT/Claude)</button>
-                        <button class="fmt-btn" id="fmtXml">XML (Claude/Gemini Structure)</button>
+                        <button class="fmt-btn active" id="fmtXml">XML (Default - Claude/Gemini)</button>
+                        <button class="fmt-btn" id="fmtMarkdown">Markdown (ChatGPT)</button>
                     </div>
                 </div>
 
@@ -174,7 +174,7 @@
 
                 <div class="preview-container">
                     <div class="preview-header">
-                        <span id="previewTitle">Preview: project_context.txt</span>
+                        <span id="previewTitle">Preview: project_context.xml (XML)</span>
                         <span id="previewInfo"></span>
                     </div>
                     <pre class="preview-code" id="previewCode"></pre>

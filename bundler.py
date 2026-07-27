@@ -93,7 +93,6 @@ def generate_ascii_tree(root_dir, ignore_set, gitignore_spec):
         except Exception:
             return
 
-        # Filter entries
         valid_entries = []
         for entry in entries:
             if entry.startswith(".") and entry not in {".env.example"}:
@@ -139,12 +138,11 @@ def process_directory(root_dir, custom_ignores=None):
     total_lines = 0
     total_redacted = 0
 
-    # 1. Generate ASCII Directory Tree
+    # 1. Always Generate ASCII Directory Tree at top
     ascii_tree = generate_ascii_tree(root_dir, ignore_set, gitignore_spec)
 
     # 2. Process Files
     for dirpath, dirnames, filenames in os.walk(root_dir):
-        # Prune ignored directories
         dirnames[:] = [
             d for d in dirnames
             if d not in ignore_set and not d.startswith(".")
@@ -178,23 +176,7 @@ def process_directory(root_dir, custom_ignores=None):
             except Exception as e:
                 print(f"Warning: Could not read {rel_path}: {e}")
 
-    # 3. Format Output in Markdown
-    md_parts = [
-        "================================================================",
-        "PROJECT STRUCTURE",
-        "================================================================",
-        ascii_tree,
-        "",
-        "================================================================",
-        "FILE CONTENTS",
-        "================================================================"
-    ]
-    for path, content in file_entries:
-        md_parts.append(f"\n--- FILE: {path} ---\n{content}")
-
-    markdown_text = "\n".join(md_parts)
-
-    # 4. Format Output in XML
+    # 3. Format Output in XML (DEFAULT)
     xml_parts = [
         "<repository>",
         "  <structure>",
@@ -210,15 +192,31 @@ def process_directory(root_dir, custom_ignores=None):
 
     xml_text = "\n".join(xml_parts)
 
-    token_count = count_tokens(markdown_text)
+    # 4. Format Output in Markdown
+    md_parts = [
+        "================================================================",
+        "PROJECT STRUCTURE",
+        "================================================================",
+        ascii_tree,
+        "",
+        "================================================================",
+        "FILE CONTENTS",
+        "================================================================"
+    ]
+    for path, content in file_entries:
+        md_parts.append(f"\n--- FILE: {path} ---\n{content}")
+
+    markdown_text = "\n".join(md_parts)
+
+    token_count = count_tokens(xml_text)
 
     return {
-        "text": markdown_text,
-        "markdown_text": markdown_text,
+        "text": xml_text,  # Default to XML text
         "xml_text": xml_text,
+        "markdown_text": markdown_text,
         "file_count": file_count,
         "total_lines": total_lines,
-        "total_bytes": len(markdown_text.encode("utf-8")),
+        "total_bytes": len(xml_text.encode("utf-8")),
         "token_count": token_count,
         "redacted_count": total_redacted,
         "ascii_tree": ascii_tree
@@ -230,13 +228,11 @@ def process_zip_file(zip_path, custom_ignores=None):
     try:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             for member in zip_ref.infolist():
-                # Zip Slip Protection
                 extracted_path = os.path.realpath(os.path.join(temp_dir, member.filename))
                 if not (extracted_path == real_temp_dir or extracted_path.startswith(real_temp_dir + os.sep)):
                     raise ValueError(f"Security Alert: Malicious zip entry path detected '{member.filename}'")
                 zip_ref.extract(member, temp_dir)
 
-        # Handle top-level single directory inside ZIP if present
         subitems = os.listdir(temp_dir)
         target_dir = temp_dir
         if len(subitems) == 1 and os.path.isdir(os.path.join(temp_dir, subitems[0])):
