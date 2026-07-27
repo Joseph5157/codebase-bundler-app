@@ -92,12 +92,18 @@ def process_directory(root_dir, custom_ignores=None):
 
 def process_zip_file(zip_path, custom_ignores=None):
     """
-    Extracts zip file into a temporary directory and bundles it.
+    Extracts zip file into a temporary directory with Zip Slip protection and bundles it.
     """
     temp_dir = tempfile.mkdtemp(prefix="bundler_")
+    real_temp_dir = os.path.realpath(temp_dir)
     try:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(temp_dir)
+            for member in zip_ref.infolist():
+                # Zip Slip Vulnerability Protection: ensure target path is within real_temp_dir
+                extracted_path = os.path.realpath(os.path.join(temp_dir, member.filename))
+                if not (extracted_path == real_temp_dir or extracted_path.startswith(real_temp_dir + os.sep)):
+                    raise ValueError(f"Security Alert: Malicious zip entry path detected '{member.filename}'")
+                zip_ref.extract(member, temp_dir)
 
         # Handle top-level single directory inside ZIP if present
         subitems = os.listdir(temp_dir)

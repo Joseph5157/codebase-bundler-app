@@ -9,6 +9,7 @@ from store import save_bundle, get_bundle
 load_dotenv()
 
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+MAX_TELEGRAM_FILE_BYTES = 20 * 1024 * 1024  # 20 MB Telegram Bot API limit
 
 def format_bytes(size):
     if size < 1024:
@@ -35,7 +36,7 @@ def create_bot():
             "- Ignores `node_modules`, `.git`, `venv`, `__pycache__`, & binary files\n"
             "- Formats clean file headers for ChatGPT, Claude, & Gemini\n"
             "- 📋 **1-Tap Copy** & 📥 **Download** directly inside Telegram chat!\n\n"
-            "📤 **Send any .zip file to get started!**"
+            "📤 **Send any .zip file (up to 20 MB) to get started!**"
         )
         bot.reply_to(message, welcome_text, parse_mode="Markdown")
 
@@ -44,6 +45,15 @@ def create_bot():
         doc = message.document
         if not doc.file_name.lower().endswith('.zip'):
             bot.reply_to(message, "⚠️ Please upload a valid **.zip** archive file.", parse_mode="Markdown")
+            return
+
+        # 2. Handle Telegram 20 MB Limit Guard
+        if doc.file_size and doc.file_size > MAX_TELEGRAM_FILE_BYTES:
+            bot.reply_to(
+                message,
+                "⚠️ File exceeds Telegram's **20 MB** bot limit. Please upload a smaller `.zip` archive.",
+                parse_mode="Markdown"
+            )
             return
 
         status_msg = bot.reply_to(message, "⏳ Downloading and processing your project `.zip` file...")
@@ -82,15 +92,17 @@ def create_bot():
                 "👇 **Tap below to Copy or Download directly in chat:**"
             )
 
-            # Create Inline Keyboard with Telegram chat buttons only (No external windows!)
+            # Create Inline Keyboard with Telegram chat buttons
             markup = InlineKeyboardMarkup(row_width=2)
             btn_copy = InlineKeyboardButton("📋 Copy Context", callback_data=f"copy_{bundle_id}")
             btn_download = InlineKeyboardButton("📥 Download .txt", callback_data=f"dl_{bundle_id}")
             
             markup.add(btn_copy, btn_download)
 
-            # Send document file with Inline Keyboard buttons
-            output_tmp = os.path.join(tempfile.gettempdir(), "project_context.txt")
+            # 1. Fix Race Condition (Collision Bug) using unique output filename
+            output_filename = f"project_context_{message.chat.id}_{message.message_id}.txt"
+            output_tmp = os.path.join(tempfile.gettempdir(), output_filename)
+            
             with open(output_tmp, "w", encoding="utf-8") as f:
                 f.write(text_content)
 
@@ -104,7 +116,7 @@ def create_bot():
                     reply_markup=markup
                 )
 
-            # Clean up output file
+            # Clean up unique output file
             if os.path.exists(output_tmp):
                 os.remove(output_tmp)
 
@@ -138,7 +150,6 @@ def create_bot():
                 copy_msg = f"📋 **Tap code block below to copy:**\n\n```text\n{safe_text}\n```"
                 bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
             else:
-                # Split cleanly by lines into ~3800 character chunks
                 chunks = []
                 lines = text_content.split('\n')
                 current_chunk = []
@@ -170,10 +181,13 @@ def create_bot():
                 bot.answer_callback_query(call.id, "⚠️ Context expired. Please re-upload your zip file.", show_alert=True)
                 return
 
-            bot.answer_callback_query(call.id, "📥 Preparing download file...", show_alert=False)
+            bot.answer_callback_query(call.id, "📥 Re-sending project_context.txt file...", show_alert=False)
 
             text_content = bundle['text']
-            output_tmp = os.path.join(tempfile.gettempdir(), "project_context.txt")
+            # Unique path to prevent race conditions during concurrent downloads
+            output_filename = f"project_context_{call.message.chat.id}_{call.message.message_id}.txt"
+            output_tmp = os.path.join(tempfile.gettempdir(), output_filename)
+
             with open(output_tmp, "w", encoding="utf-8") as f:
                 f.write(text_content)
 
