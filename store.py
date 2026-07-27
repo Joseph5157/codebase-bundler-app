@@ -25,14 +25,13 @@ def save_bundle(
                 BUNDLES.pop(k, None)
 
     bundle_id = uuid.uuid4().hex[:12]
-    # Default format is XML
     xml_content = xml_text or text
     md_content = markdown_text or text
 
     BUNDLES[bundle_id] = {
         'xml_text': xml_content,
         'markdown_text': md_content,
-        'text': xml_content,  # Default to XML
+        'text': xml_content,
         'active_format': 'xml',
         'file_count': file_count,
         'total_lines': total_lines,
@@ -40,12 +39,21 @@ def save_bundle(
         'token_count': token_count,
         'redacted_count': redacted_count,
         'filename': filename,
+        'sent_message_ids': [],
         'created_at': now
     }
     return bundle_id
 
 def get_bundle(bundle_id: str):
     return BUNDLES.get(bundle_id)
+
+def add_sent_message(bundle_id: str, msg_id: int):
+    bundle = BUNDLES.get(bundle_id)
+    if bundle:
+        if 'sent_message_ids' not in bundle:
+            bundle['sent_message_ids'] = []
+        if msg_id not in bundle['sent_message_ids']:
+            bundle['sent_message_ids'].append(msg_id)
 
 def toggle_bundle_format(bundle_id: str):
     bundle = BUNDLES.get(bundle_id)

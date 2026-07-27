@@ -5,7 +5,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from dotenv import load_dotenv
 from bundler import process_zip_file
 from github_downloader import download_github_repo_zip, GITHUB_URL_REGEX
-from store import save_bundle, get_bundle, toggle_bundle_format
+from store import save_bundle, get_bundle, toggle_bundle_format, add_sent_message
 
 load_dotenv()
 
@@ -29,7 +29,7 @@ def build_summary_text(result, active_format="xml"):
         f"🧮 **Estimated Tokens:** `~{result['token_count']:,}` (cl100k-base)\n"
         f"📦 **Context Size:** `{format_bytes(result['total_bytes'])}`\n"
         f"🔒 **Redacted Secrets:** `{result['redacted_count']}`\n\n"
-        "👇 **Tap below to Copy or Download directly in chat:**"
+        "👇 **Tap below to Copy, Download, or Clean Up chat:**"
     )
 
 def build_keyboard(bundle_id, active_format="xml"):
@@ -40,9 +40,10 @@ def build_keyboard(bundle_id, active_format="xml"):
     
     toggle_label = "🏷️ Format: XML (Switch to MD)" if active_format == "xml" else "🏷️ Format: MD (Switch to XML)"
     btn_toggle = InlineKeyboardButton(toggle_label, callback_data=f"toggle_{bundle_id}")
+    btn_clean = InlineKeyboardButton("🗑️ Clean Up Chat", callback_data=f"clean_{bundle_id}")
 
     markup.add(btn_copy, btn_download)
-    markup.add(btn_toggle)
+    markup.add(btn_toggle, btn_clean)
     return markup
 
 def create_bot():
@@ -61,10 +62,10 @@ def create_bot():
             "1️⃣ **Upload a `.zip` archive file**, OR\n"
             "2️⃣ **Paste a GitHub repo link** (e.g., `https://github.com/owner/repo`)\n\n"
             "🌟 **Features:**\n"
-            "- 🌲 ASCII Directory Tree at top for spatial LLM awareness\n"
-            "- 🏷️ **Default XML Output Format** (`<file path=\"...\">`)\n"
+            "- 🌲 ASCII Directory Tree & 🏷️ **Default XML Output Format**\n"
             "- 🧮 `tiktoken` Token Count & 🔒 Automatic Secret Redaction\n"
-            "- 📋 **1-Tap Copy** & 📥 **Download** directly inside Telegram!"
+            "- 📋 **1-Tap Copy** & 📥 **Download** directly inside Telegram\n"
+            "- 🗑️ **1-Tap Chat Clean Up** to delete all generated files/messages when done!"
         )
         bot.reply_to(message, welcome_text, parse_mode="Markdown")
 
@@ -138,7 +139,7 @@ def create_bot():
             f.write(result['xml_text'])
 
         with open(output_tmp, "rb") as doc_file:
-            bot.send_document(
+            sent_doc = bot.send_document(
                 message.chat.id,
                 doc_file,
                 caption=summary,
@@ -146,6 +147,7 @@ def create_bot():
                 reply_to_message_id=message.message_id,
                 reply_markup=markup
             )
+            add_sent_message(bundle_id, sent_doc.message_id)
 
         if os.path.exists(output_tmp):
             os.remove(output_tmp)
@@ -154,7 +156,26 @@ def create_bot():
 
     @bot.callback_query_handler(func=lambda call: True)
     def handle_callbacks(call):
-        if call.data.startswith("toggle_"):
+        if call.data.startswith("clean_"):
+            bundle_id = call.data.replace("clean_", "")
+            bundle = get_bundle(bundle_id)
+
+            bot.answer_callback_query(call.id, "🧹 Cleaning up generated files and messages...", show_alert=False)
+
+            if bundle and 'sent_message_ids' in bundle:
+                for msg_id in bundle['sent_message_ids']:
+                    try:
+                        bot.delete_message(call.message.chat.id, msg_id)
+                    except Exception:
+                        pass
+                bundle['sent_message_ids'] = []
+            else:
+                try:
+                    bot.delete_message(call.message.chat.id, call.message.message_id)
+                except Exception:
+                    pass
+
+        elif call.data.startswith("toggle_"):
             bundle_id = call.data.replace("toggle_", "")
             bundle = toggle_bundle_format(bundle_id)
 
@@ -197,7 +218,8 @@ def create_bot():
             if total_len <= CHUNK_SIZE:
                 safe_text = text_content.replace("```", "'''")
                 copy_msg = f"📋 **Tap code block below to copy ({fmt_label}):**\n\n```text\n{safe_text}\n```"
-                bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
+                sent_msg = bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
+                add_sent_message(bundle_id, sent_msg.message_id)
             else:
                 chunks = []
                 lines = text_content.split('\n')
@@ -220,7 +242,8 @@ def create_bot():
                 for idx, chunk in enumerate(chunks, 1):
                     safe_chunk = chunk.replace("```", "'''")
                     copy_msg = f"📋 **Part {idx}/{total_parts} ({fmt_label} - Tap code block to copy):**\n\n```text\n{safe_chunk}\n```"
-                    bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
+                    sent_msg = bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
+                    add_sent_message(bundle_id, sent_msg.message_id)
 
         elif call.data.startswith("dl_"):
             bundle_id = call.data.replace("dl_", "")
@@ -241,13 +264,14 @@ def create_bot():
                 f.write(text_content)
 
             with open(output_tmp, "rb") as doc_file:
-                bot.send_document(
+                sent_doc = bot.send_document(
                     call.message.chat.id,
                     doc_file,
                     caption=f"📥 **Here is your `project_context{ext}` file:**",
                     parse_mode="Markdown",
                     reply_to_message_id=call.message.message_id
                 )
+                add_sent_message(bundle_id, sent_doc.message_id)
 
             if os.path.exists(output_tmp):
                 os.remove(output_tmp)
