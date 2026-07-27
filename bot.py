@@ -9,8 +9,6 @@ from store import save_bundle, get_bundle
 load_dotenv()
 
 TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
-WEB_APP_DOMAIN = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'codebase-bundler-app-production.up.railway.app')
-WEB_APP_URL = os.environ.get('WEB_APP_URL', f"https://{WEB_APP_DOMAIN}")
 
 def format_bytes(size):
     if size < 1024:
@@ -36,12 +34,10 @@ def create_bot():
             "⚡ **Features:**\n"
             "- Ignores `node_modules`, `.git`, `venv`, `__pycache__`, & binary files\n"
             "- Formats clean file headers for ChatGPT, Claude, & Gemini\n"
-            "- 📋 **1-Click Copy** & 📥 **Download** buttons included right in chat!\n\n"
+            "- 📋 **1-Tap Copy** & 📥 **Download** directly inside Telegram chat!\n\n"
             "📤 **Send any .zip file to get started!**"
         )
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("🌐 Open Web App", url=WEB_APP_URL))
-        bot.reply_to(message, welcome_text, parse_mode="Markdown", reply_markup=markup)
+        bot.reply_to(message, welcome_text, parse_mode="Markdown")
 
     @bot.message_handler(content_types=['document'])
     def handle_document(message):
@@ -69,7 +65,7 @@ def create_bot():
             total_lines = result['total_lines']
             total_bytes = result['total_bytes']
 
-            # Save bundle into store
+            # Save bundle into shared store
             bundle_id = save_bundle(
                 text=text_content,
                 file_count=file_count,
@@ -78,24 +74,20 @@ def create_bot():
                 filename=doc.file_name
             )
 
-            copy_url = f"{WEB_APP_URL}/copy/{bundle_id}"
-
             summary = (
                 "✅ **Project Context Bundled Successfully!**\n\n"
                 f"📁 **Files Bundled:** `{file_count:,}`\n"
                 f"📝 **Total Lines:** `{total_lines:,}`\n"
                 f"📦 **Context Size:** `{format_bytes(total_bytes)}`\n\n"
-                "👇 **Tap below to Copy or Download your full context:**"
+                "👇 **Tap below to Copy or Download directly in chat:**"
             )
 
-            # Create Inline Keyboard with 1-Click Copy Web Page, Download & Telegram Preview
+            # Create Inline Keyboard with Telegram chat buttons only (No external windows!)
             markup = InlineKeyboardMarkup(row_width=2)
-            btn_copy_full = InlineKeyboardButton("📋 Copy Full Context", url=copy_url)
+            btn_copy = InlineKeyboardButton("📋 Copy Context", callback_data=f"copy_{bundle_id}")
             btn_download = InlineKeyboardButton("📥 Download .txt", callback_data=f"dl_{bundle_id}")
-            btn_preview = InlineKeyboardButton("💬 Chat Preview", callback_data=f"preview_{bundle_id}")
             
-            markup.add(btn_copy_full)
-            markup.add(btn_download, btn_preview)
+            markup.add(btn_copy, btn_download)
 
             # Send document file with Inline Keyboard buttons
             output_tmp = os.path.join(tempfile.gettempdir(), "project_context.txt")
@@ -127,8 +119,8 @@ def create_bot():
 
     @bot.callback_query_handler(func=lambda call: True)
     def handle_callbacks(call):
-        if call.data.startswith("preview_"):
-            bundle_id = call.data.replace("preview_", "")
+        if call.data.startswith("copy_"):
+            bundle_id = call.data.replace("copy_", "")
             bundle = get_bundle(bundle_id)
 
             if not bundle:
@@ -136,22 +128,39 @@ def create_bot():
                 return
 
             text_content = bundle['text']
-            bot.answer_callback_query(call.id, "📋 Preparing chat preview...", show_alert=False)
+            bot.answer_callback_query(call.id, "📋 Sending copyable context into chat...", show_alert=False)
 
-            if len(text_content) <= 3800:
-                copy_msg = (
-                    "💬 **Tap the code block below to copy:**\n\n"
-                    f"```text\n{text_content}\n```"
-                )
+            CHUNK_SIZE = 3800
+            total_len = len(text_content)
+
+            if total_len <= CHUNK_SIZE:
+                safe_text = text_content.replace("```", "'''")
+                copy_msg = f"📋 **Tap code block below to copy:**\n\n```text\n{safe_text}\n```"
+                bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
             else:
-                snippet = text_content[:3500]
-                copy_msg = (
-                    "💬 **Tap code block below to copy preview:**\n\n"
-                    f"```text\n{snippet}\n```\n\n"
-                    f"🔗 *To copy the ENTIRE context without truncation, tap the [📋 Copy Full Context] button!*"
-                )
+                # Split cleanly by lines into ~3800 character chunks
+                chunks = []
+                lines = text_content.split('\n')
+                current_chunk = []
+                current_len = 0
 
-            bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
+                for line in lines:
+                    line_len = len(line) + 1
+                    if current_len + line_len > CHUNK_SIZE and current_chunk:
+                        chunks.append("\n".join(current_chunk))
+                        current_chunk = [line]
+                        current_len = line_len
+                    else:
+                        current_chunk.append(line)
+                        current_len += line_len
+                if current_chunk:
+                    chunks.append("\n".join(current_chunk))
+
+                total_parts = len(chunks)
+                for idx, chunk in enumerate(chunks, 1):
+                    safe_chunk = chunk.replace("```", "'''")
+                    copy_msg = f"📋 **Part {idx}/{total_parts} (Tap code block below to copy):**\n\n```text\n{safe_chunk}\n```"
+                    bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
 
         elif call.data.startswith("dl_"):
             bundle_id = call.data.replace("dl_", "")
