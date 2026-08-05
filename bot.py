@@ -23,28 +23,36 @@ def format_bytes(size):
 def build_summary_text(result, active_format="xml"):
     fmt_title = "XML" if active_format == "xml" else "Markdown"
     return (
-        f"✅ **Project Context Bundled Successfully!** ({fmt_title})\n\n"
-        f"📁 **Files Bundled:** `{result['file_count']:,}`\n"
-        f"📝 **Total Lines:** `{result['total_lines']:,}`\n"
-        f"🧮 **Estimated Tokens:** `~{result['token_count']:,}` (cl100k-base)\n"
-        f"📦 **Context Size:** `{format_bytes(result['total_bytes'])}`\n"
-        f"🔒 **Redacted Secrets:** `{result['redacted_count']}`\n\n"
-        "👇 **Tap below to Copy, Download, or Clean Up chat:**"
+        f"✅ <b>Project Context Bundled Successfully!</b> ({fmt_title})\n\n"
+        f"📁 <b>Files Bundled:</b> <code>{result['file_count']:,}</code>\n"
+        f"📝 <b>Total Lines:</b> <code>{result['total_lines']:,}</code>\n"
+        f"🧮 <b>Estimated Tokens:</b> <code>~{result['token_count']:,}</code> (cl100k-base)\n"
+        f"📦 <b>Context Size:</b> <code>{format_bytes(result['total_bytes'])}</code>\n"
+        f"🔒 <b>Redacted Secrets:</b> <code>{result['redacted_count']}</code>\n\n"
+        "👇 <b>Tap below to Download context file or switch format:</b>"
     )
 
 def build_keyboard(bundle_id, active_format="xml"):
     markup = InlineKeyboardMarkup(row_width=2)
     ext = ".xml" if active_format == "xml" else ".txt"
-    btn_copy = InlineKeyboardButton("📋 Copy Context", callback_data=f"copy_{bundle_id}")
     btn_download = InlineKeyboardButton(f"📥 Download {ext}", callback_data=f"dl_{bundle_id}")
     
     toggle_label = "🏷️ Format: XML (Switch to MD)" if active_format == "xml" else "🏷️ Format: MD (Switch to XML)"
     btn_toggle = InlineKeyboardButton(toggle_label, callback_data=f"toggle_{bundle_id}")
     btn_clean = InlineKeyboardButton("🗑️ Clean Up Chat", callback_data=f"clean_{bundle_id}")
 
-    markup.add(btn_copy, btn_download)
-    markup.add(btn_toggle, btn_clean)
+    markup.add(btn_download, btn_toggle)
+    markup.add(btn_clean)
     return markup
+
+def is_github_url_message(message):
+    if not message or not message.text:
+        return False
+    text = message.text.strip()
+    # Reject long texts or code blocks to avoid false positives when users paste/forward code
+    if len(text) > 300 or text.count('\n') > 3:
+        return False
+    return bool(GITHUB_URL_REGEX.search(text))
 
 def create_bot():
     if not TOKEN:
@@ -56,20 +64,20 @@ def create_bot():
     @bot.message_handler(commands=['start', 'help'])
     def send_welcome(message):
         welcome_text = (
-            "👋 **Welcome to the Project Context Bundler Bot!**\n\n"
-            "Convert any GitHub repository into a clean, single `project_context.xml` file ready for AI models!\n\n"
-            "⚡ **How to use:**\n"
-            "1️⃣ **Upload a `.zip` archive file**, OR\n"
-            "2️⃣ **Paste a GitHub repo link** (e.g., `https://github.com/owner/repo`)\n\n"
-            "🌟 **Features:**\n"
-            "- 🌲 ASCII Directory Tree & 🏷️ **Default XML Output Format**\n"
-            "- 🧮 `tiktoken` Token Count & 🔒 Automatic Secret Redaction\n"
-            "- 📋 **1-Tap Copy** & 📥 **Download** directly inside Telegram\n"
-            "- 🗑️ **1-Tap Chat Clean Up** to delete all generated files/messages when done!"
+            "👋 <b>Welcome to the Project Context Bundler Bot!</b>\n\n"
+            "Convert any GitHub repository into a clean, single <code>project_context.xml</code> file ready for AI models!\n\n"
+            "⚡ <b>How to use:</b>\n"
+            "1️⃣ <b>Upload a <code>.zip</code> archive file</b>, OR\n"
+            "2️⃣ <b>Paste a GitHub repo link</b> (e.g., <code>https://github.com/owner/repo</code>)\n\n"
+            "🌟 <b>Features:</b>\n"
+            "- 🌲 ASCII Directory Tree & 🏷️ <b>Default XML Output Format</b>\n"
+            "- 🧮 <code>tiktoken</code> Token Count & 🔒 Automatic Secret Redaction\n"
+            "- 📥 <b>Direct Download</b> of XML/Markdown context files inside Telegram\n"
+            "- 🗑️ <b>1-Tap Chat Clean Up</b> to delete all generated files/messages when done!"
         )
-        bot.reply_to(message, welcome_text, parse_mode="Markdown")
+        bot.reply_to(message, welcome_text, parse_mode="HTML")
 
-    @bot.message_handler(func=lambda msg: GITHUB_URL_REGEX.search(msg.text or ""))
+    @bot.message_handler(func=is_github_url_message)
     def handle_github_url(message):
         url_text = message.text.strip()
         status_msg = bot.reply_to(message, "⏳ Downloading repository from GitHub...")
@@ -84,18 +92,18 @@ def create_bot():
     def handle_document(message):
         doc = message.document
         if not doc.file_name.lower().endswith('.zip'):
-            bot.reply_to(message, "⚠️ Please upload a valid **.zip** archive file.", parse_mode="Markdown")
+            bot.reply_to(message, "⚠️ Please upload a valid <b>.zip</b> archive file.", parse_mode="HTML")
             return
 
         if doc.file_size and doc.file_size > MAX_TELEGRAM_FILE_BYTES:
             bot.reply_to(
                 message,
-                "⚠️ File exceeds Telegram's **20 MB** bot limit. Please upload a smaller `.zip` archive.",
-                parse_mode="Markdown"
+                "⚠️ File exceeds Telegram's <b>20 MB</b> bot limit. Please upload a smaller <code>.zip</code> archive.",
+                parse_mode="HTML"
             )
             return
 
-        status_msg = bot.reply_to(message, "⏳ Downloading and processing your project `.zip` file...")
+        status_msg = bot.reply_to(message, "⏳ Downloading and processing your project <code>.zip</code> file...", parse_mode="HTML")
 
         with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
             tmp_path = tmp_file.name
@@ -139,25 +147,14 @@ def create_bot():
             f.write(result['xml_text'])
 
         with open(output_tmp, "rb") as doc_file:
-            try:
-                sent_doc = bot.send_document(
-                    message.chat.id,
-                    doc_file,
-                    caption=summary,
-                    parse_mode="Markdown",
-                    reply_to_message_id=message.message_id,
-                    reply_markup=markup
-                )
-            except Exception:
-                doc_file.seek(0)
-                sent_doc = bot.send_document(
-                    message.chat.id,
-                    doc_file,
-                    caption=summary,
-                    parse_mode=None,
-                    reply_to_message_id=message.message_id,
-                    reply_markup=markup
-                )
+            sent_doc = bot.send_document(
+                message.chat.id,
+                doc_file,
+                caption=summary,
+                parse_mode="HTML",
+                reply_to_message_id=message.message_id,
+                reply_markup=markup
+            )
             add_sent_message(bundle_id, sent_doc.message_id)
 
         if os.path.exists(output_tmp):
@@ -167,11 +164,14 @@ def create_bot():
 
     @bot.callback_query_handler(func=lambda call: True)
     def handle_callbacks(call):
+        try:
+            bot.answer_callback_query(call.id)
+        except Exception:
+            pass
+
         if call.data.startswith("clean_"):
             bundle_id = call.data.replace("clean_", "")
             bundle = get_bundle(bundle_id)
-
-            bot.answer_callback_query(call.id, "🧹 Cleaning up generated files and messages...", show_alert=False)
 
             if bundle and 'sent_message_ids' in bundle:
                 for msg_id in bundle['sent_message_ids']:
@@ -191,12 +191,13 @@ def create_bot():
             bundle = toggle_bundle_format(bundle_id)
 
             if not bundle:
-                bot.answer_callback_query(call.id, "⚠️ Context expired. Please re-upload or re-paste link.", show_alert=True)
+                try:
+                    bot.answer_callback_query(call.id, "⚠️ Context expired. Please re-upload or re-paste link.", show_alert=True)
+                except Exception:
+                    pass
                 return
 
             new_fmt = bundle['active_format']
-            bot.answer_callback_query(call.id, f"🔄 Switched output format to {new_fmt.upper()}!", show_alert=False)
-
             summary = build_summary_text(bundle, active_format=new_fmt)
             markup = build_keyboard(bundle_id, active_format=new_fmt)
 
@@ -205,90 +206,28 @@ def create_bot():
                     chat_id=call.message.chat.id,
                     message_id=call.message.message_id,
                     caption=summary,
-                    parse_mode="Markdown",
+                    parse_mode="HTML",
                     reply_markup=markup
                 )
             except Exception:
                 pass
 
         elif call.data.startswith("copy_"):
-            bundle_id = call.data.replace("copy_", "")
-            bundle = get_bundle(bundle_id)
-
-            if not bundle:
-                bot.answer_callback_query(call.id, "⚠️ Context expired. Please re-upload or re-paste link.", show_alert=True)
-                return
-
-            text_content = bundle['text']
-            fmt_label = bundle.get('active_format', 'xml').upper()
-            bot.answer_callback_query(call.id, f"📋 Preparing copyable {fmt_label} context...", show_alert=False)
-
-            CHUNK_SIZE = 3800
-            MAX_COPY_PARTS = 3
-            total_len = len(text_content)
-
-            if total_len <= CHUNK_SIZE:
-                safe_text = text_content.replace("```", "'''")
-                copy_msg = f"📋 **Tap code block below to copy ({fmt_label}):**\n\n```text\n{safe_text}\n```"
-                try:
-                    sent_msg = bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
-                except Exception:
-                    sent_msg = bot.send_message(call.message.chat.id, f"📋 Tap code block below to copy ({fmt_label}):\n\n{text_content}", reply_to_message_id=call.message.message_id)
-                add_sent_message(bundle_id, sent_msg.message_id)
-            else:
-                chunks = []
-                lines = text_content.split('\n')
-                current_chunk = []
-                current_len = 0
-
-                for line in lines:
-                    line_len = len(line) + 1
-                    if current_len + line_len > CHUNK_SIZE and current_chunk:
-                        chunks.append("\n".join(current_chunk))
-                        current_chunk = [line]
-                        current_len = line_len
-                    else:
-                        current_chunk.append(line)
-                        current_len += line_len
-                if current_chunk:
-                    chunks.append("\n".join(current_chunk))
-
-                total_parts = len(chunks)
-                parts_to_send = min(total_parts, MAX_COPY_PARTS)
-
-                for idx in range(parts_to_send):
-                    chunk = chunks[idx]
-                    safe_chunk = chunk.replace("```", "'''")
-                    copy_msg = f"📋 **Part {idx+1}/{total_parts} ({fmt_label} - Tap code block to copy):**\n\n```text\n{safe_chunk}\n```"
-                    try:
-                        sent_msg = bot.send_message(call.message.chat.id, copy_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
-                    except Exception:
-                        sent_msg = bot.send_message(call.message.chat.id, f"📋 Part {idx+1}/{total_parts} ({fmt_label}):\n\n{chunk}", reply_to_message_id=call.message.message_id)
-                    add_sent_message(bundle_id, sent_msg.message_id)
-
-                if total_parts > MAX_COPY_PARTS:
-                    server_url = os.environ.get('SERVER_URL', '').rstrip('/')
-                    copy_web_text = f"\n\n🔗 **Web 1-Click Copy:** {server_url}/copy/{bundle_id}" if server_url else ""
-                    limit_msg = (
-                        f"⚠️ **Context is large ({total_parts} parts / {format_bytes(len(text_content))}) for Telegram messages.**\n"
-                        f"Sent first {MAX_COPY_PARTS} parts above to prevent continuous message flooding.{copy_web_text}\n\n"
-                        f"📥 **Please use the Download button or open the `.xml` / `.txt` file above for full context!**"
-                    )
-                    try:
-                        sent_msg = bot.send_message(call.message.chat.id, limit_msg, parse_mode="Markdown", reply_to_message_id=call.message.message_id)
-                    except Exception:
-                        sent_msg = bot.send_message(call.message.chat.id, limit_msg.replace("**", "").replace("`", ""), reply_to_message_id=call.message.message_id)
-                    add_sent_message(bundle_id, sent_msg.message_id)
+            try:
+                bot.answer_callback_query(call.id, "📥 Please use the Download button below to get your context file!", show_alert=True)
+            except Exception:
+                pass
 
         elif call.data.startswith("dl_"):
             bundle_id = call.data.replace("dl_", "")
             bundle = get_bundle(bundle_id)
 
             if not bundle:
-                bot.answer_callback_query(call.id, "⚠️ Context expired. Please re-upload or re-paste link.", show_alert=True)
+                try:
+                    bot.answer_callback_query(call.id, "⚠️ Context expired. Please re-upload or re-paste link.", show_alert=True)
+                except Exception:
+                    pass
                 return
-
-            bot.answer_callback_query(call.id, "📥 Sending context file...", show_alert=False)
 
             text_content = bundle['text']
             ext = ".xml" if bundle.get('active_format') == 'xml' else ".txt"
@@ -302,8 +241,8 @@ def create_bot():
                 sent_doc = bot.send_document(
                     call.message.chat.id,
                     doc_file,
-                    caption=f"📥 **Here is your `project_context{ext}` file:**",
-                    parse_mode="Markdown",
+                    caption=f"📥 <b>Here is your <code>project_context{ext}</code> file:</b>",
+                    parse_mode="HTML",
                     reply_to_message_id=call.message.message_id
                 )
                 add_sent_message(bundle_id, sent_doc.message_id)
